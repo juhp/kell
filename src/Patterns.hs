@@ -12,64 +12,78 @@
 --   See the License for the specific language governing permissions and
 --   limitations under the License.
 
-module Patterns(
-  expandPath
-)where
-
-import ShCommon
+module Patterns
+  ( expandPath,
+  )
+where
 
 import qualified Control.Exception as E
 import Control.Monad
+import ShCommon
 import System.Directory
 import Text.Parsec
 import Text.Parsec.String (Parser)
 import Text.Regex.TDFA
 
 pattern2Regex :: String -> String
-pattern2Regex str = case parse patternParser "pattern" str of Right regex -> regex
-                                                              Left  _     -> str
+pattern2Regex str = case parse patternParser "pattern" str of
+  Right regex -> regex
+  Left _ -> str
 
 classExp :: Parser String
-classExp = (++) <$> string "[["                  <*> restClass
-  where restClass = string "]]"
-                <|> (++) . (:[]) <$> anyChar <*> restClass
+classExp = (++) <$> string "[[" <*> restClass
+  where
+    restClass =
+      string "]]"
+        <|> (++) . (: []) <$> anyChar <*> restClass
 
 bracketExp :: Parser String
-bracketExp = (++) . (:[]) <$> char '[' <*> secondC
-  where restBracket = string "]" <|> (++) . (:[]) <$> noneOf "]" <*> restBracket
-        secondC = (++) . (:[]) <$> (char '!' >> return '^')  <*> restBracket
-              <|> (++) . (:[]) <$> noneOf "[]!" <*> restBracket
+bracketExp = (++) . (: []) <$> char '[' <*> secondC
+  where
+    restBracket = string "]" <|> (++) . (: []) <$> noneOf "]" <*> restBracket
+    secondC =
+      (++) . (: []) <$> (char '!' >> return '^') <*> restBracket
+        <|> (++) . (: []) <$> noneOf "[]!" <*> restBracket
 
 patternParser :: Parser String
-patternParser = (eof >> return "")
-            <|> (++) <$> (char '*' >> return ".*")  <*> patternParser
-            <|> (++) <$> (char '?' >> return "." )  <*> patternParser
-            <|> (++) <$> (char '.' >> return "\\.") <*> patternParser
-            <|> (++) <$> try classExp               <*> patternParser
-            <|> (++) <$> try bracketExp             <*> patternParser
-            <|> ((++) . (:[]) <$> anyChar)          <*> patternParser
+patternParser =
+  (eof >> return "")
+    <|> (++) <$> (char '*' >> return ".*") <*> patternParser
+    <|> (++) <$> (char '?' >> return ".") <*> patternParser
+    <|> (++) <$> (char '.' >> return "\\.") <*> patternParser
+    <|> (++) <$> try classExp <*> patternParser
+    <|> (++) <$> try bracketExp <*> patternParser
+    <|> ((++) . (: []) <$> anyChar) <*> patternParser
 
 -- TODO check permissions
 expandPathR :: String -> String -> IO [String]
 expandPathR restPath basePath = do
-  case restrest of "" -> contentsFiltered
-                   _  -> concat <$> (contentsFiltered >>= mapM (expandPathR restrest) )
-  where midP   = takeWhile (/='/') restPath
-        restrest  = (dropWhile (=='/') . dropWhile (/='/')) restPath
-        restSlash = (takeWhile (=='/') . dropWhile (/='/')) restPath
-        lookupHandler :: E.IOException -> IO [String]
-        lookupHandler e = return []
-        baseLookup = case basePath of "" -> "./"
-                                      _  -> basePath
-        lookupDir = E.catch (getDirectoryContents baseLookup) lookupHandler
-        isMatch = filter ((==) <$> ( =~ pattern2Regex midP ) <*> id)
-        contents = if midP == "" || head midP == '.' then lookupDir
-                   else filter ((/='.') . head) <$> lookupDir
-        contentsFiltered = fmap ( ((++ restSlash) . (basePath ++) <$>) . isMatch) contents
+  case restrest of
+    "" -> contentsFiltered
+    _ -> concat <$> (contentsFiltered >>= mapM (expandPathR restrest))
+  where
+    midP = takeWhile (/= '/') restPath
+    restrest = (dropWhile (== '/') . dropWhile (/= '/')) restPath
+    restSlash = (takeWhile (== '/') . dropWhile (/= '/')) restPath
+    lookupHandler :: E.IOException -> IO [String]
+    lookupHandler e = return []
+    baseLookup = case basePath of
+      "" -> "./"
+      _ -> basePath
+    lookupDir = E.catch (getDirectoryContents baseLookup) lookupHandler
+    isMatch = filter ((==) <$> (=~ pattern2Regex midP) <*> id)
+    contents =
+      if midP == "" || head midP == '.'
+        then lookupDir
+        else filter ((/= '.') . head) <$> lookupDir
+    contentsFiltered = fmap (((++ restSlash) . (basePath ++) <$>) . isMatch) contents
 
 expandPath :: String -> IO [String]
-expandPath str = case str of "" -> return [""]
-                             _  -> expandPathR relPath (takeWhile (=='/') str) >>= handleRes
-  where relPath = dropWhile (=='/') str
-        handleRes paths = case paths of [] -> return [str]
-                                        _  -> return paths
+expandPath str = case str of
+  "" -> return [""]
+  _ -> expandPathR relPath (takeWhile (== '/') str) >>= handleRes
+  where
+    relPath = dropWhile (== '/') str
+    handleRes paths = case paths of
+      [] -> return [str]
+      _ -> return paths

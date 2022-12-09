@@ -12,54 +12,58 @@
 --   See the License for the specific language governing permissions and
 --   limitations under the License.
 module Lexer
-( lexer,
-  Token(..),
-) where
-
-import ShCommon
+  ( lexer,
+    Token (..),
+  )
+where
 
 import Data.Stack
+import ShCommon
 import Text.Parsec
 -- TODO No proper wchar support
 import Text.Parsec.String (Parser)
 
-reservedOps = [("&&",    AND_IF)
-              ,("||",    OR_IF)
-              ,(";;",    DSEMI)
-              ,("<<-",   DLESSDASH)
-              ,("<<",    DLESS)
-              ,(">>",    DGREAT)
-              ,("<&",    LESSAND)
-              ,(">&",    GREATAND)
-              ,("<>",    LESSGREAT)
-              ,(">|",    CLOBBER)
-              ,("(",     LBracket)
-              ,(")",     RBracket)
-              ,("&",     Ampersand)
-              ,(";",     SEMI)
-              ,("|",     PIPE)
-              ,("<",     LESS)
-              ,(">",     GREAT)
-              ,("\n",    NEWLINE)]
-
+reservedOps =
+  [ ("&&", AND_IF),
+    ("||", OR_IF),
+    (";;", DSEMI),
+    ("<<-", DLESSDASH),
+    ("<<", DLESS),
+    (">>", DGREAT),
+    ("<&", LESSAND),
+    (">&", GREATAND),
+    ("<>", LESSGREAT),
+    (">|", CLOBBER),
+    ("(", LBracket),
+    (")", RBracket),
+    ("&", Ampersand),
+    (";", SEMI),
+    ("|", PIPE),
+    ("<", LESS),
+    (">", GREAT),
+    ("\n", NEWLINE)
+  ]
 
 parseReservedOp :: Parser Token
-parseReservedOp = foldl1 (<|>) ((\(a,b)-> try $ string a >> return b ) <$> reservedOps)
+parseReservedOp = foldl1 (<|>) ((\(a, b) -> try $ string a >> return b) <$> reservedOps)
 
 parseWord :: Parser String
-parseWord = (eof       >>            return "" )
-        <|> (              (++)            <$> escape '\\'                       <*> (parseWord <|> return "") )
-        <|> (char '\'' >> ((++) . ("'"++)  <$> quote  (char '\'' >> return "'" ) <*> (parseWord <|> return "") ) )
-        <|> (char '`'  >> ((++) . ("`"++)  <$> quote  (char '`'  >> return "`" ) <*> (parseWord <|> return "") ) )
-        <|> (char '"'  >> ((++) . ("\""++) <$> dQuote (char '"'  >> return "\"") <*> (parseWord <|> return "") ) )
-        <|> (char '$'  >> ((++) . ("$"++)  <$> getDollarStr                      <*> (parseWord <|> return "") ) )-- word expansion
-        <|> (             (++) . (:[])     <$> noneOf forbidden                  <*> (parseWord <|> return "") )-- parse letter
-  where forbidden = (head . fst <$> reservedOps) ++ " "
-        getDollarStr = getDollarExp id stackNew <|> return ""
+parseWord =
+  (eof >> return "")
+    <|> ((++) <$> escape '\\' <*> (parseWord <|> return ""))
+    <|> (char '\'' >> ((++) . ("'" ++) <$> quote (char '\'' >> return "'") <*> (parseWord <|> return "")))
+    <|> (char '`' >> ((++) . ("`" ++) <$> quote (char '`' >> return "`") <*> (parseWord <|> return "")))
+    <|> (char '"' >> ((++) . ("\"" ++) <$> dQuote (char '"' >> return "\"") <*> (parseWord <|> return "")))
+    <|> (char '$' >> ((++) . ("$" ++) <$> getDollarStr <*> (parseWord <|> return ""))) -- word expansion
+    <|> ((++) . (: []) <$> noneOf forbidden <*> (parseWord <|> return "")) -- parse letter
+  where
+    forbidden = (head . fst <$> reservedOps) ++ " "
+    getDollarStr = getDollarExp id stackNew <|> return ""
 
 lexer :: Parser [Token]
-lexer = (eof      >> return [EOF])
-    <|> ( (++) . (:[])         <$> parseReservedOp <*>                         lexer)
-    <|> (char '#' >> many (noneOf "\n")                                       >> lexer)
-    <|> (char ' '                                                             >> lexer)
-    <|> ( (++) . (:[]) . Word  <$> parseWord       <*> ((eof >> return [EOF]) <|> lexer) )
+lexer =
+  (eof >> return [EOF])
+    <|> ((++) . (: []) <$> parseReservedOp <*> lexer)
+    <|> (char '#' >> many (noneOf "\n") >> lexer)
+    <|> (char ' ' >> lexer)
+    <|> ((++) . (: []) . Word <$> parseWord <*> ((eof >> return [EOF]) <|> lexer))

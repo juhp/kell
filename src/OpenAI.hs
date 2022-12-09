@@ -15,7 +15,9 @@ import Network.HTTP.Simple
 import System.Environment
 
 openApiKey = "OPENAI_API_KEY"
+
 completionApi = "https://api.openai.com/v1/completions"
+
 textDaVinci2 = "text-davinci-002"
 
 data OpenAIRequest = CompletionRequest
@@ -35,7 +37,9 @@ instance ToJSON OpenAIRequest where
 
 instance Show Prompt where
   show (Prompt xs) = (\x -> take (length x - 2) x) $ foldr (\x acc -> acc <> x <> "\n\n") "" xs
+
 instance FromJSON OpenAIChoice
+
 instance FromJSON OpenAIResponse
 
 getAPIKey :: IO String
